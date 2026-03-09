@@ -2,18 +2,19 @@ import httpx
 import time
 from typing import List, Dict, Optional
 from src.models.schemas import StationInfo
+from src.config.constants import YB2_STATION_LIST_URL, YB2_PARKING_INFO_URL
 
 class YouBikeClient:
-    LIST_URL = "https://apis.youbike.com.tw/json/station-min-yb2.json"
-    PARKING_URL = "https://apis.youbike.com.tw/tw2/parkingInfo"
 
     def __init__(self, timeout: int = 15):
         self.timeout = timeout
+        self.station_list_url = YB2_STATION_LIST_URL
+        self.parking_info_url = YB2_PARKING_INFO_URL
 
     async def fetch_station_list(self) -> List[StationInfo]:
         """Fetch basic station metadata."""
         async with httpx.AsyncClient(timeout=self.timeout) as client:
-            response = await client.get(f"{self.LIST_URL}?_t={int(time.time()*1000)}")
+            response = await client.get(f"{self.station_list_url}?_t={int(time.time()*1000)}")
             response.raise_for_status()
             data = response.json()
             
@@ -42,7 +43,7 @@ class YouBikeClient:
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             try:
                 response = await client.post(
-                    self.PARKING_URL,
+                    self.parking_info_url,
                     json={"station_no": station_ids},
                     headers={"Content-Type": "application/json"}
                 )
