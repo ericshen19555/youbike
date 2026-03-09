@@ -20,9 +20,9 @@ def parse_natural_language_to_rrule(text: str) -> Optional[str]:
     byday = ""
     if "每天" in text or "everyday" in text:
         byday = "MO,TU,WE,TH,FR,SA,SU"
-    elif "一到五" in text:
+    elif "平日" in text or "一到五" in text:
         byday = "MO,TU,WE,TH,FR"
-    elif "週末" in text:
+    elif "週末" in text or "六日" in text:
         byday = "SA,SU"
     else:
         # Match individual days
