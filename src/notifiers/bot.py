@@ -2,14 +2,16 @@ import asyncio
 import logging
 import os
 import re
-import json
+import json # Added import json
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Dict, Any, Union # Added Any, Union for more precise typing
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from aiogram.types import Message
 
+from typing import List, Dict, Optional
 from src.core.user_service import UserService
+from src.core.station_service import StationService
 from src.utils.nlp_parser import parse_natural_language_to_rrule
 from src.config.constants import DEFAULT_THRESHOLD
 from src.utils.geo_utils import calculate_distance
@@ -19,14 +21,16 @@ from src.models.schemas import StationInfo
 
 class BikeGuardBot:
 
-    def __init__(self, token: str, user_service: UserService, api_client: YouBikeClient):
+    def __init__(self, token: str, user_service: UserService, station_service: StationService, api_client: YouBikeClient):
         self.bot = Bot(token=token)
         self.dp = Dispatcher()
         self.user_service = user_service
+        self.station_service = station_service
         self.api_client = api_client
-        self._station_cache: Optional[List[StationInfo]] = None
-        self._cache_time: Optional[datetime] = None
-        self._last_search_results: dict = {} # user_id -> dict
+        
+        # Temp state for search disambiguation: user_id -> {"matches": [...], "command": "...", "args": [...]}
+        self._last_search_results: Dict[str, dict] = {}
+        
         self._setup_handlers()
 
     def _setup_handlers(self):
@@ -41,17 +45,8 @@ class BikeGuardBot:
         self.dp.message.register(self.text_handler) # Catch-all for NLP and search
 
     async def _get_station_cache(self) -> List[StationInfo]:
-        # Cache for 10 minutes
-        now = datetime.now()
-        should_update = (
-            self._station_cache is None or 
-            self._cache_time is None or 
-            (now - self._cache_time).total_seconds() > 600
-        )
-        if should_update:
-            self._station_cache = await self.api_client.fetch_station_list()
-            self._cache_time = now
-        return self._station_cache or []
+        """Transparently use StationService for all metadata needs."""
+        return await self.station_service.get_stations()
 
 
     async def _find_stations(self, query: str) -> List[StationInfo]:

@@ -1,7 +1,8 @@
 import sqlite3
 import os
 from typing import List, Optional
-from src.models.schemas import UserSubscription, ActiveTask
+from datetime import datetime
+from src.models.schemas import UserSubscription, ActiveTask, StationInfo
 
 class DatabaseManager:
     def __init__(self, db_path: str = "bikeguard.db"):
@@ -42,12 +43,36 @@ class DatabaseManager:
                     FOREIGN KEY (sub_id) REFERENCES user_subscriptions(id)
                 )
             ''')
+
+            # 3. Station Metadata Cache
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS stations (
+                    sno TEXT PRIMARY KEY,
+                    sna TEXT NOT NULL,
+                    tot INTEGER,
+                    lat REAL,
+                    lng REAL,
+                    ar TEXT,
+                    sarea TEXT,
+                    sareaen TEXT,
+                    updatetime TEXT,
+                    act TEXT DEFAULT '1'
+                )
+            ''')
+
+            # 4. System Metadata
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS system_meta (
+                    key TEXT PRIMARY KEY,
+                    value TEXT
+                )
+            ''')
             conn.commit()
         finally:
             conn.close()
 
     # --- Subscription Methods ---
-    def add_or_update_subscription(self, sub: UserSubscription) -> int:
+    def add_or_update_subscription(self, sub: UserSubscription) -> Optional[int]:
         conn = self._get_connection()
         try:
             cursor = conn.cursor()
@@ -134,18 +159,6 @@ class DatabaseManager:
         finally:
             conn.close()
 
-    def add_task(self, task: ActiveTask):
-        conn = self._get_connection()
-        try:
-            cursor = conn.cursor()
-            cursor.execute("""
-                INSERT INTO active_tasks (sub_id, next_run, current_interval, status)
-                VALUES (?, ?, ?, ?)
-            """, (task.sub_id, task.next_run, task.current_interval, task.status))
-            conn.commit()
-        finally:
-            conn.close()
-
     def get_tasks_for_subscription(self, sub_id: int, status: Optional[str] = None) -> List[dict]:
         conn = self._get_connection()
         try:
@@ -158,26 +171,14 @@ class DatabaseManager:
         finally:
             conn.close()
 
-    def get_all_active_subscriptions(self) -> List[dict]:
-        conn = self._get_connection()
-        try:
-            cursor = conn.cursor()
-            cursor.execute("SELECT * FROM user_subscriptions WHERE is_active = 1")
-            return [dict(row) for row in cursor.fetchall()]
-        finally:
-            conn.close()
-
-
     def delete_subscription(self, user_id: str, station_id: str):
         conn = self._get_connection()
         try:
             cursor = conn.cursor()
-            # 1. Delete associated tasks first
             cursor.execute("""
                 DELETE FROM active_tasks 
                 WHERE sub_id IN (SELECT id FROM user_subscriptions WHERE user_id = ? AND station_id = ?)
             """, (user_id, station_id))
-            # 2. Delete subscription
             cursor.execute("DELETE FROM user_subscriptions WHERE user_id = ? AND station_id = ?", (user_id, station_id))
             conn.commit()
         finally:
@@ -196,5 +197,53 @@ class DatabaseManager:
         finally:
             conn.close()
 
+    # --- Station Metadata Methods ---
+    def save_stations(self, stations: List[StationInfo]):
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            for s in stations:
+                cursor.execute("""
+                    INSERT INTO stations (sno, sna, tot, lat, lng, ar, sarea, sareaen, updatetime, act)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(sno) DO UPDATE SET
+                        sna=excluded.sna, tot=excluded.tot, lat=excluded.lat, lng=excluded.lng,
+                        ar=excluded.ar, sarea=excluded.sarea, sareaen=excluded.sareaen,
+                        updatetime=excluded.updatetime, act=excluded.act
+                """, (s.sno, s.sna, s.tot, s.lat, s.lng, s.ar, s.sarea, s.sareaen, s.updatetime, s.act))
+            conn.commit()
+        finally:
+            conn.close()
 
+    def get_stations(self) -> List[StationInfo]:
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM stations")
+            rows = cursor.fetchall()
+            return [StationInfo(**dict(row)) for row in rows]
+        finally:
+            conn.close()
 
+    # --- System Meta Methods ---
+    def get_meta(self, key: str) -> Optional[str]:
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT value FROM system_meta WHERE key = ?", (key,))
+            row = cursor.fetchone()
+            return row[0] if row else None
+        finally:
+            conn.close()
+
+    def set_meta(self, key: str, value: str):
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO system_meta (key, value) VALUES (?, ?)
+                ON CONFLICT(key) DO UPDATE SET value=excluded.value
+            """, (key, value))
+            conn.commit()
+        finally:
+            conn.close()

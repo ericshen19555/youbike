@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 from src.api.client import YouBikeClient
 from src.database.manager import DatabaseManager
 from src.core.user_service import UserService
+from src.core.station_service import StationService
 from src.core.monitor import MonitorEngine
 from src.core.scheduler import RRuleScheduler
 from src.notifiers.telegram import TelegramNotifier
@@ -43,6 +44,9 @@ async def main():
     # 3. Initialize API Client
     api_client = YouBikeClient()
     
+    # 3.5 Initialize Station Service (Metadata Management)
+    station_service = StationService(db_manager, api_client)
+    
     # 4. Initialize Notifiers
     telegram_token = os.getenv("TELEGRAM_BOT_TOKEN")
     telegram_chat_id = os.getenv("TELEGRAM_CHAT_ID")
@@ -58,7 +62,7 @@ async def main():
     # 6. Initialize Bot (Layer 3)
     tasks = [] # Initialize tasks list for asyncio.gather
     if telegram_token:
-        bot = BikeGuardBot(telegram_token, user_service, api_client)
+        bot = BikeGuardBot(telegram_token, user_service, station_service, api_client)
         tasks.append(bot.start())
     else:
         # If bot is not enabled, add a no-op task to keep asyncio.gather happy
