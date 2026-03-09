@@ -335,18 +335,38 @@ class BikeGuardBot:
         await self._process_remove(message, target)
 
     async def _process_remove(self, message: Message, target_query: str):
-        matches = await self._find_stations(target_query)
+        user_id = str(message.chat.id)
+        subs = self.user_service.get_subscriptions(user_id)
+        
+        if not subs:
+            await message.answer("❌ 你目前沒有任何監控任務，無法移除。")
+            return
+
+        # Get unique station IDs from subscriptions
+        subscribed_station_ids = {s['station_id'] for s in subs}
+        
+        # Get metadata for these stations
+        all_stations = await self._get_station_cache()
+        subscribed_stations = [s for s in all_stations if s.sno in subscribed_station_ids]
+        
+        # Filter these by the target_query
+        target_query = target_query.lower()
+        matches = []
+        for s in subscribed_stations:
+            if target_query == s.sno or target_query in s.sna.lower():
+                matches.append(s)
+        
         if not matches:
-            await message.answer(f"❓ 找不到任何站點符合『{target_query}』。")
+            await message.answer(f"❓ 你的監控清單中找不到任何站點符合『{target_query}』。")
             return
             
         if len(matches) > 1:
-            self._last_search_results[str(message.chat.id)] = {
+            self._last_search_results[user_id] = {
                 "matches": matches[:10],
                 "command": "remove",
                 "args": []
             }
-            resp = "🧐 *找到多個可能要移除的站點，請輸入編號來確認：*\n\n"
+            resp = "🧐 *你的監控清單中找到多個符合的站點，請輸入編號來確認：*\n\n"
             for i, s in enumerate(matches[:10], 1):
                 resp += f"{i}. 🏠 `{s.sna}` (ID: `{s.sno}`)\n"
             resp += "\n💡 *你也可以直接輸入新的名稱或 ID 重新搜尋。*"
@@ -366,6 +386,9 @@ class BikeGuardBot:
             return
 
         if len(subs) > 1:
+            # Sort by rrule string as a basic "time" sort
+            subs.sort(key=lambda x: x['rrule'])
+            
             self._last_search_results[user_id] = {
                 "matches": subs,
                 "command": "remove_slot",
