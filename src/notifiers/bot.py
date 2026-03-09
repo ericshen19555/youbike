@@ -9,13 +9,16 @@ from aiogram.types import Message
 from src.core.user_service import UserService
 from src.utils.nlp_parser import parse_natural_language_to_rrule
 from src.config.constants import DEFAULT_THRESHOLD
+from src.utils.geo_utils import calculate_distance
+from src.api.client import YouBikeClient
 
 class BikeGuardBot:
 
-    def __init__(self, token: str, user_service: UserService):
+    def __init__(self, token: str, user_service: UserService, api_client: YouBikeClient):
         self.bot = Bot(token=token)
         self.dp = Dispatcher()
         self.user_service = user_service
+        self.api_client = api_client
         self._setup_handlers()
 
     def _setup_handlers(self):
@@ -24,7 +27,8 @@ class BikeGuardBot:
         self.dp.message.register(self.list_handler, Command("list"))
         self.dp.message.register(self.remove_handler, Command("remove"))
         self.dp.message.register(self.cancel_handler, Command("cancel"))
-        self.dp.message.register(self.text_handler) # Catch-all for NLP
+        self.dp.message.register(self.location_handler, lambda m: m.location is not None)
+        self.dp.message.register(self.text_handler) # Catch-all for NLP and search
 
     async def start_handler(self, message: Message):
         chat_id = message.chat.id
@@ -97,12 +101,47 @@ class BikeGuardBot:
     async def cancel_handler(self, message: Message):
         await message.answer("操作已取消。")
 
-    async def text_handler(self, message: Message):
-        # NLP Attempt
-        text = message.text
-        rrule = parse_natural_language_to_rrule(text)
+    async def location_handler(self, message: Message):
+        lat = message.location.latitude
+        lng = message.location.longitude
         
-        # Try to find a station ID in the text (9-digit number)
+        stations = await self.api_client.fetch_station_list()
+        
+        # Calculate distances
+        for s in stations:
+            s.tot = calculate_distance(lat, lng, s.lat, s.lng) # Reusing 'tot' as temp distance storage
+            
+        # Sort by distance
+        stations.sort(key=lambda x: x.tot)
+        
+        top_5 = stations[:5]
+        text = "📍 *離你最近的 5 個站點：*\n\n"
+        for s in top_5:
+            dist = s.tot * 1000 # to meters
+            text += f"🏠 `{s.sna}`\n   ID: `{s.sno}` | 距離: {dist:.0f}m\n   地址: {s.ar or '無'}\n\n"
+            
+        text += "💡 點擊 ID 即可複製，並使用 `/add [ID] [門檻]` 開啟監控。"
+        await message.answer(text, parse_mode="Markdown")
+
+    async def text_handler(self, message: Message):
+        text = message.text
+        
+        # 1. Check if user is searching for a station name or location keyword
+        if len(text) >= 2 and not text.startswith("/"):
+            stations = await self.api_client.fetch_station_list()
+            matches = [s for s in stations if text in s.sna or (s.ar and text in s.ar) or (s.sarea and text in s.sarea)]
+            
+            if matches:
+                matches = matches[:8] # Limit results
+                resp = f"🔎 *找到相關站點 ({len(matches)} 筆)：*\n\n"
+                for s in matches:
+                    resp += f"🏠 `{s.sna}`\n   ID: `{s.sno}` | 區域: {s.sarea or '無'}\n\n"
+                resp += "💡 找到 ID 後，請使用 `/add [ID] [門檻]`。"
+                await message.answer(resp, parse_mode="Markdown")
+                return
+
+        # 2. NLP Attempt (Existing)
+        rrule = parse_natural_language_to_rrule(text)
         station_match = re.search(r'\d{9}', text)
         station_id = station_match.group(0) if station_match else None
         
@@ -110,7 +149,7 @@ class BikeGuardBot:
             await self.user_service.register_subscription(
                 user_id=str(message.chat.id),
                 station_id=station_id,
-                threshold=3, # Default
+                threshold=3, 
                 rrule=rrule
             )
             await message.answer(
@@ -122,17 +161,18 @@ class BikeGuardBot:
                 parse_mode="Markdown"
             )
         else:
-            await message.answer("抱歉，我還沒聽懂這個指令。請試試 `/add [站點ID] [門檻]`。")
+            await message.answer("抱歉，我還沒聽懂這個指令。\n💡 傳送『座標』給我直接尋找最近站點，或輸入『站點關鍵字』搜尋。")
 
     async def set_commands(self):
         commands = [
             types.BotCommand(command="start", description="開始使用 BikeGuard"),
-            types.BotCommand(command="add", description="新增訂閱 (例如: /add 500101001 每天 08:30)"),
+            types.BotCommand(command="add", description="新增訂閱 (例如: /add 500101001 3)"),
             types.BotCommand(command="list", description="列出目前所有訂閱"),
             types.BotCommand(command="remove", description="移除訂閱 (例如: /remove 1)"),
             types.BotCommand(command="cancel", description="取消目前操作")
         ]
         await self.bot.set_my_commands(commands)
+
 
     async def start(self):
         logging.info("Starting Telegram Bot...")

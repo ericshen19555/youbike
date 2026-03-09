@@ -56,11 +56,13 @@ async def main():
     rrule_scheduler = RRuleScheduler(db_manager)
     
     # 6. Initialize Bot (Layer 3)
+    tasks = [] # Initialize tasks list for asyncio.gather
     if telegram_token:
-        bot = BikeGuardBot(telegram_token, user_service)
-        bot_task = bot.start()
+        bot = BikeGuardBot(telegram_token, user_service, api_client)
+        tasks.append(bot.start())
     else:
-        bot_task = asyncio.sleep(0) # No-op
+        # If bot is not enabled, add a no-op task to keep asyncio.gather happy
+        tasks.append(asyncio.sleep(0)) 
     
     # 7. Start Loops
     # Layer 1: Scheduler (Check for new tasks every 60s)
@@ -69,10 +71,11 @@ async def main():
     
     try:
         logging.info("BikeGuard is running. Press Ctrl+C to stop.")
+        # Join all tasks (Scheduler, Worker, and Bot)
         await asyncio.gather(
             rrule_scheduler.start_loop(interval=60),
             worker_loop(monitor_engine, interval=worker_interval),
-            bot_task
+            *tasks
         )
 
     except (KeyboardInterrupt, asyncio.CancelledError):
