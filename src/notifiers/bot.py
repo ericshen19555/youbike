@@ -45,12 +45,12 @@ class BikeGuardBot:
         )
 
     async def add_handler(self, message: Message):
-        # Example: /add 500101001 3 每天 08:30
+        # Example: /add 500101001 3 每天 08:30 [電輔/普通/兩者]
         args = message.text.split()
         if len(args) < 3:
             await message.answer(
-                "❌ *格式錯誤*\n請輸入：`/add [站點ID] [門檻值] [時間規則]`\n"
-                "例如：`/add 500101001 3 每天 08:30` 或 `/add 500101001 3 每週五 17:00`",
+                "❌ *格式錯誤*\n請輸入：`/add [站點ID] [門檻值] [時間規則] [車型(可選)]`\n"
+                "例如：`/add 500101001 3 每天 08:30 電輔`",
                 parse_mode="Markdown"
             )
             return
@@ -62,23 +62,36 @@ class BikeGuardBot:
             await message.answer("❌ 門檻值必須是數字。")
             return
             
-        # Parse the remaining text as the RRule
-        nlp_text = " ".join(args[3:]) if len(args) > 3 else "每天 00:00"
-        rrule = parse_natural_language_to_rrule(nlp_text)
+        full_text = " ".join(args[3:])
+        # 1. Extract bike type
+        bike_type = "any"
+        if "電輔" in full_text or "電" in full_text:
+            bike_type = "electric"
+            type_display = "2.0E (電輔)"
+        elif "普通" in full_text or "一般" in full_text:
+            bike_type = "normal"
+            type_display = "2.0 (普通)"
+        else:
+            type_display = "兩者皆可"
+            
+        # 2. Extract and parse time (the rest)
+        rrule = parse_natural_language_to_rrule(full_text)
         
         await self.user_service.register_subscription(
             user_id=str(message.chat.id),
             station_id=station_id,
             threshold=threshold,
-            rrule=rrule
+            rrule=rrule,
+            bike_type=bike_type
         )
         
         await message.answer(
             f"✅ *定時監控已開啟！*\n\n"
             f"📍 站點：`{station_id}`\n"
             f"🎯 門檻：{threshold} 輛\n"
-            f"⏰ 規則：{nlp_text} (`{rrule}`)\n\n"
-            f"機器人將在指定時間開始，若車輛低於門檻將持續提醒直到恢復或逾時。",
+            f"🚲 車型：{type_display}\n"
+            f"⏰ 規則：{full_text} (`{rrule}`)\n\n"
+            f"💡 系統將在指定時間前 **20 分鐘** 開始監控，若車輛過低會即時通知。",
             parse_mode="Markdown"
         )
 
@@ -86,12 +99,16 @@ class BikeGuardBot:
     async def list_handler(self, message: Message):
         subs = self.user_service.get_subscriptions(str(message.chat.id))
         if not subs:
-            await message.answer("你目前沒有任何追蹤中的站點。")
+            await message.answer("你目前沒有任何監控任務。使用 `/add` 來新增一個吧！")
             return
             
         text = "📋 *你的監控清單：*\n\n"
-        for s in subs:
-            text += f"📍 站點：`{s['station_id']}`\n   門檻：{s['threshold']} | 規則：`{s['rrule']}`\n\n"
+        for i, s in enumerate(subs, 1):
+            type_map = {"any": "兩者", "normal": "普通", "electric": "電輔"}
+            type_label = type_map.get(s['bike_type'], "兩者")
+            text += f"{i}. 站點 `{s['station_id']}`\n   門檻: {s['threshold']} | 車型: {type_label}\n   規則: `{s['rrule']}`\n\n"
+        
+        text += "💡 使用 `/remove [站點ID]` 來移除監控。"
         await message.answer(text, parse_mode="Markdown")
 
     async def remove_handler(self, message: Message):
@@ -158,17 +175,27 @@ class BikeGuardBot:
         station_match = re.search(r'\d{9}', text)
         station_id = station_match.group(0) if station_match else None
         
+        # Detect bike type
+        bike_type = "any"
+        if "電輔" in text or "電" in text:
+            bike_type = "electric"
+        elif "普通" in text or "一般" in text:
+            bike_type = "normal"
+        
         if rrule and station_id:
             await self.user_service.register_subscription(
                 user_id=str(message.chat.id),
                 station_id=station_id,
                 threshold=3, 
-                rrule=rrule
+                rrule=rrule,
+                bike_type=bike_type
             )
+            type_label = {"any": "兩者", "normal": "普通", "electric": "電輔"}[bike_type]
             await message.answer(
                 f"🤖 *我聽懂了！*\n"
                 f"已為你設定：\n"
                 f"📍 站點：`{station_id}`\n"
+                f"🚲 車型：{type_label}\n"
                 f"📅 循環：`{rrule}`\n"
                 f"門檻預設為 3 輛。你可以隨時用 /list 查看。",
                 parse_mode="Markdown"

@@ -19,6 +19,8 @@ DYNAMIC_INTERVAL_HIGH = 15
 DYNAMIC_INTERVAL_MEDIUM = 30
 DYNAMIC_INTERVAL_LOW = 60
 
-# --- Worker / Scheduler Intervals ---
+# --- Monitoring Timing ---
+PRE_MONITOR_LEAD_TIME_MINUTES = 20 # Start monitoring 20 minutes before the target time
 SCHEDULER_CHECK_INTERVAL = 60
 WORKER_CHECK_INTERVAL = int(os.getenv("WORKER_CHECK_INTERVAL", 15))
+
