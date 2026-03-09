@@ -28,9 +28,47 @@ class DatabaseManager:
                     threshold INTEGER DEFAULT 3,
                     bike_type TEXT DEFAULT 'any',
                     is_active BOOLEAN DEFAULT 1,
-                    UNIQUE(user_id, station_id)
+                    UNIQUE(user_id, station_id, rrule)
                 )
             ''')
+            
+            # Migration: Check if we need to update the unique constraint
+            # (If the old UNIQUE(user_id, station_id) still exists)
+            cursor.execute("PRAGMA table_info(user_subscriptions)")
+            columns = cursor.fetchall()
+            # If we need to migrate, we'll know by checking index info
+            cursor.execute("PRAGMA index_list(user_subscriptions)")
+            indexes = cursor.fetchall()
+            need_migration = False
+            for idx in indexes:
+                # If there's an index that only covers user_id and station_id, but not rrule
+                cursor.execute(f"PRAGMA index_info('{idx['name']}')")
+                info = cursor.fetchall()
+                col_names = [i[2] for i in info]
+                if set(col_names) == {'user_id', 'station_id'}:
+                    need_migration = True
+                    break
+            
+            if need_migration:
+                # SQLite doesn't support DROP CONSTRAINT, so we recreate the table
+                cursor.execute("ALTER TABLE user_subscriptions RENAME TO user_subscriptions_old")
+                cursor.execute('''
+                    CREATE TABLE user_subscriptions (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        user_id TEXT NOT NULL,
+                        station_id TEXT NOT NULL,
+                        rrule TEXT NOT NULL,
+                        threshold INTEGER DEFAULT 3,
+                        bike_type TEXT DEFAULT 'any',
+                        is_active BOOLEAN DEFAULT 1,
+                        UNIQUE(user_id, station_id, rrule)
+                    )
+                ''')
+                cursor.execute('''
+                    INSERT INTO user_subscriptions (id, user_id, station_id, rrule, threshold, bike_type, is_active)
+                    SELECT id, user_id, station_id, rrule, threshold, bike_type, is_active FROM user_subscriptions_old
+                ''')
+                cursor.execute("DROP TABLE user_subscriptions_old")
             
             # 2. Worker Active Task Queue
             cursor.execute('''
@@ -79,8 +117,7 @@ class DatabaseManager:
             cursor.execute("""
                 INSERT INTO user_subscriptions (user_id, station_id, rrule, threshold, bike_type, is_active)
                 VALUES (?, ?, ?, ?, ?, ?)
-                ON CONFLICT(user_id, station_id) DO UPDATE SET
-                    rrule=excluded.rrule,
+                ON CONFLICT(user_id, station_id, rrule) DO UPDATE SET
                     threshold=excluded.threshold,
                     bike_type=excluded.bike_type,
                     is_active=excluded.is_active
@@ -97,6 +134,15 @@ class DatabaseManager:
         try:
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM user_subscriptions WHERE user_id = ?", (user_id,))
+            return [dict(row) for row in cursor.fetchall()]
+        finally:
+            conn.close()
+
+    def get_user_station_subscriptions(self, user_id: str, station_id: str) -> List[dict]:
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM user_subscriptions WHERE user_id = ? AND station_id = ?", (user_id, station_id))
             return [dict(row) for row in cursor.fetchall()]
         finally:
             conn.close()
@@ -180,6 +226,16 @@ class DatabaseManager:
                 WHERE sub_id IN (SELECT id FROM user_subscriptions WHERE user_id = ? AND station_id = ?)
             """, (user_id, station_id))
             cursor.execute("DELETE FROM user_subscriptions WHERE user_id = ? AND station_id = ?", (user_id, station_id))
+            conn.commit()
+        finally:
+            conn.close()
+
+    def delete_subscription_by_id(self, sub_id: int):
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM active_tasks WHERE sub_id = ?", (sub_id,))
+            cursor.execute("DELETE FROM user_subscriptions WHERE id = ?", (sub_id,))
             conn.commit()
         finally:
             conn.close()

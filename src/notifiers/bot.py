@@ -207,8 +207,11 @@ class BikeGuardBot:
                     if command == "add":
                         await self._register_sub_with_station(message, selected, state.get("args", []))
                     elif command == "remove":
-                        self.user_service.remove_subscription(user_id, selected.sno)
-                        await message.answer(f"✅ 已成功移除站點 `[{selected.sna}]` 的監控任務。", parse_mode="Markdown")
+                        await self._check_and_process_remove_selection(message, selected)
+                    elif command == "remove_slot":
+                        # selected is actually a subscription dict here
+                        self.user_service.remove_subscription_by_id(selected['id'])
+                        await message.answer(f"✅ 已成功移除該時段的監控任務。", parse_mode="Markdown")
                     elif command == "query":
                         await self._send_detailed_query(message, selected)
                         
@@ -350,10 +353,34 @@ class BikeGuardBot:
             await message.answer(resp, parse_mode="Markdown")
             return
             
-        # One match
-        selected = matches[0]
-        self.user_service.remove_subscription(str(message.chat.id), selected.sno)
-        await message.answer(f"✅ 已成功移除站點 `[{selected.sna}]` 的監控任務。", parse_mode="Markdown")
+        # One station match
+        selected_station = matches[0]
+        await self._check_and_process_remove_selection(message, selected_station)
+
+    async def _check_and_process_remove_selection(self, message: Message, station: StationInfo):
+        user_id = str(message.chat.id)
+        subs = self.user_service.get_user_station_subscriptions(user_id, station.sno)
+        
+        if not subs:
+            await message.answer(f"❓ 你目前沒有訂閱 `[{station.sna}]` 的監控任務。")
+            return
+
+        if len(subs) > 1:
+            self._last_search_results[user_id] = {
+                "matches": subs,
+                "command": "remove_slot",
+                "args": []
+            }
+            resp = f"🧐 *站點 `[{station.sna}]` 有多個監控時段，請輸入編號來選擇要刪除哪一個：*\n\n"
+            for i, s in enumerate(subs, 1):
+                resp += f"{i}. ⏰ 規則：`{s['rrule']}` | 門檻：{s['threshold']}\n"
+            resp += "\n⚠️ *注意：此處只能輸入數字編號選擇。*"
+            await message.answer(resp, parse_mode="Markdown")
+            return
+            
+        # Only one subscription
+        self.user_service.remove_subscription_by_id(subs[0]['id'])
+        await message.answer(f"✅ 已成功移除站點 `[{station.sna}]` 的監控任務 (`{subs[0]['rrule']}`)。", parse_mode="Markdown")
 
 
     async def cancel_handler(self, message: Message):

@@ -24,9 +24,15 @@ class UserService:
     def get_subscriptions(self, user_id: str) -> List[dict]:
         return self.db.get_user_subscriptions(user_id)
 
+    def get_user_station_subscriptions(self, user_id: str, station_id: str) -> List[dict]:
+        return self.db.get_user_station_subscriptions(user_id, station_id)
 
     def remove_subscription(self, user_id: str, station_id: str):
         self.db.delete_subscription(user_id, station_id)
+        return True
+
+    def remove_subscription_by_id(self, sub_id: int):
+        self.db.delete_subscription_by_id(sub_id)
         return True
 
     def clear_all_subscriptions(self, user_id: str):

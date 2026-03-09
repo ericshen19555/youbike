@@ -109,7 +109,7 @@ class MonitorEngine:
             # 5. Schedule next run or DELETE if one-time
             if is_triggered and task.get('rrule', '').startswith('ONCE:'):
                 logging.info(f"One-time task {task_id} (sub {task['sub_id']}) completed. Deleting subscription.")
-                self.user_service.remove_subscription(task['user_id'], station_id)
+                self.user_service.remove_subscription_by_id(task['sub_id'])
             else:
                 next_run_dt = datetime.now() + timedelta(seconds=new_interval)
                 self.user_service.db.update_task_status(
