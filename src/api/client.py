@@ -30,7 +30,9 @@ class YouBikeClient:
                     lng=float(item.get("lng") or 0),
                     ar=item.get("address_tw"),
                     sarea=item.get("district_tw"),
+                    sareaen=item.get("district_en"),
                     updatetime=item.get("updated_at") or "",
+
                     act=item.get("act") or "1"
                 ))
             return stations

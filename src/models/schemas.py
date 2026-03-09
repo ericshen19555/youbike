@@ -13,7 +13,9 @@ class StationInfo(BaseModel):
     lng: float = 0.0
     ar: Optional[str] = Field(None, description="Station Address")
     sarea: Optional[str] = Field(None, description="District")
+    sareaen: Optional[str] = Field(None, description="District (EN)")
     bemp: int = Field(0, description="Available spaces")
+
     updatetime: str = Field("", description="Update time")
     act: str = Field("1", description="Status (1: active)")
     isRealtime: bool = False
