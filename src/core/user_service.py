@@ -25,19 +25,10 @@ class UserService:
         return self.db.get_user_subscriptions(user_id)
 
     def remove_subscription(self, user_id: str, station_id: str):
-        # We'd need to add a delete_subscription method to DB manager
-        pass
-
-
-    def remove_tracking(self, user_id: str, station_id: str):
-        self.db.delete_trigger(user_id, station_id)
+        self.db.delete_subscription(user_id, station_id)
         return True
 
-    def list_user_trackings(self, user_id: str) -> List[dict]:
-        return self.db.get_user_triggers(user_id)
+    def clear_all_subscriptions(self, user_id: str):
+        self.db.delete_all_user_subscriptions(user_id)
+        return True
 
-    def get_active_tasks(self) -> List[dict]:
-        """
-        Returns all active triggers for the monitoring engine.
-        """
-        return self.db.get_all_active_triggers()

@@ -134,4 +134,33 @@ class DatabaseManager:
         finally:
             conn.close()
 
+    def delete_subscription(self, user_id: str, station_id: str):
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            # 1. Delete associated tasks first
+            cursor.execute("""
+                DELETE FROM active_tasks 
+                WHERE sub_id IN (SELECT id FROM user_subscriptions WHERE user_id = ? AND station_id = ?)
+            """, (user_id, station_id))
+            # 2. Delete subscription
+            cursor.execute("DELETE FROM user_subscriptions WHERE user_id = ? AND station_id = ?", (user_id, station_id))
+            conn.commit()
+        finally:
+            conn.close()
+
+    def delete_all_user_subscriptions(self, user_id: str):
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("""
+                DELETE FROM active_tasks 
+                WHERE sub_id IN (SELECT id FROM user_subscriptions WHERE user_id = ?)
+            """, (user_id,))
+            cursor.execute("DELETE FROM user_subscriptions WHERE user_id = ?", (user_id,))
+            conn.commit()
+        finally:
+            conn.close()
+
+
 

@@ -78,9 +78,21 @@ class BikeGuardBot:
         await message.answer(text, parse_mode="Markdown")
 
     async def remove_handler(self, message: Message):
-        # Simplified: remove all for the user in this MVP
-        self.user_service.db.delete_trigger(str(message.chat.id), "") # Need better method
-        await message.answer("已為你清空所有監控任務。")
+        args = message.text.split()
+        user_id = str(message.chat.id)
+        
+        if len(args) < 2:
+            await message.answer("請輸入正確格式：`/remove [站點ID]` 或 `/remove all`", parse_mode="Markdown")
+            return
+            
+        target = args[1].lower()
+        if target == "all":
+            self.user_service.clear_all_subscriptions(user_id)
+            await message.answer("✅ 已成功清空你所有的監控任務。")
+        else:
+            self.user_service.remove_subscription(user_id, target)
+            await message.answer(f"✅ 已成功移除站點 `{target}` 的監控任務。", parse_mode="Markdown")
+
 
     async def cancel_handler(self, message: Message):
         await message.answer("操作已取消。")
