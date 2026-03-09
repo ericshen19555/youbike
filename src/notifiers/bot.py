@@ -150,11 +150,11 @@ class BikeGuardBot:
         bike_type = "any"
         if sub_args:
             last_chunk = sub_args[-1].lower()
-            # Match "電", "E", "e" for electric (exact for English to avoid 'everyday')
-            if "電" in last_chunk or last_chunk.startswith("e"):
+            # Match "電" or startswith "e" (but not "everyday") for electric
+            if "電" in last_chunk or (last_chunk.startswith("e") and last_chunk != "everyday"):
                 bike_type = "electric"
                 sub_args.pop()
-            # Match "普通", "一般", "N", "n" for normal
+            # Match "普通", "一般" or startswith "n" for normal
             elif any(k in last_chunk for k in ["普通", "一般"]) or last_chunk.startswith("n"):
                 bike_type = "normal"
                 sub_args.pop()
