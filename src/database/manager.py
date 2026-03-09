@@ -1,77 +1,137 @@
 import sqlite3
 import os
 from typing import List, Optional
-from src.models.schemas import UserTrigger
+from src.models.schemas import UserSubscription, ActiveTask
 
 class DatabaseManager:
     def __init__(self, db_path: str = "bikeguard.db"):
         self.db_path = db_path
-        self.initialize_db() # Changed from _init_db()
+        self.initialize_db()
 
     def _get_connection(self):
-        return sqlite3.connect(self.db_path)
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        return conn
 
-    def initialize_db(self): # Renamed from _init_db
-        with sqlite3.connect(self.db_path) as conn: # Changed to use sqlite3.connect directly
+    def initialize_db(self):
+        conn = self._get_connection()
+        try:
             cursor = conn.cursor()
+            # 1. User Long-term Subscriptions
             cursor.execute('''
-                CREATE TABLE IF NOT EXISTS user_triggers (
+                CREATE TABLE IF NOT EXISTS user_subscriptions (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     user_id TEXT NOT NULL,
                     station_id TEXT NOT NULL,
+                    rrule TEXT NOT NULL,
                     threshold INTEGER DEFAULT 3,
-                    start_time TEXT NOT NULL,
-                    end_time TEXT NOT NULL,
-                    days_of_week TEXT DEFAULT '1,2,3,4,5',
-                    is_active BOOLEAN DEFAULT 1,
                     bike_type TEXT DEFAULT 'any',
+                    is_active BOOLEAN DEFAULT 1,
                     UNIQUE(user_id, station_id)
                 )
             ''')
             
-            # Simple migration: add bike_type if it doesn't exist
-            try:
-                cursor.execute("ALTER TABLE user_triggers ADD COLUMN bike_type TEXT DEFAULT 'any'")
-                conn.commit()
-            except sqlite3.OperationalError:
-                # Column already exists
-                pass
-            
+            # 2. Worker Active Task Queue
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS active_tasks (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    sub_id INTEGER NOT NULL,
+                    next_run TEXT NOT NULL,
+                    current_interval INTEGER DEFAULT 60,
+                    status TEXT DEFAULT 'pending',
+                    FOREIGN KEY (sub_id) REFERENCES user_subscriptions(id)
+                )
+            ''')
             conn.commit()
+        finally:
+            conn.close()
 
-    def add_or_update_trigger(self, trigger: UserTrigger):
-        with self._get_connection() as conn:
+    # --- Subscription Methods ---
+    def add_or_update_subscription(self, sub: UserSubscription) -> int:
+        conn = self._get_connection()
+        try:
             cursor = conn.cursor()
             cursor.execute("""
-                INSERT INTO user_triggers (user_id, station_id, threshold, start_time, end_time, days_of_week, is_active, bike_type)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO user_subscriptions (user_id, station_id, rrule, threshold, bike_type, is_active)
+                VALUES (?, ?, ?, ?, ?, ?)
                 ON CONFLICT(user_id, station_id) DO UPDATE SET
+                    rrule=excluded.rrule,
                     threshold=excluded.threshold,
-                    start_time=excluded.start_time,
-                    end_time=excluded.end_time,
-                    days_of_week=excluded.days_of_week,
-                    is_active=excluded.is_active,
-                    bike_type=excluded.bike_type
-            """, (trigger.user_id, trigger.station_id, trigger.threshold, 
-                  trigger.start_time, trigger.end_time, trigger.days_of_week, trigger.is_active, trigger.bike_type))
+                    bike_type=excluded.bike_type,
+                    is_active=excluded.is_active
+                RETURNING id
+            """, (sub.user_id, sub.station_id, sub.rrule, sub.threshold, sub.bike_type, sub.is_active))
+            result = cursor.fetchone()
             conn.commit()
+            return result[0] if result else None
+        finally:
+            conn.close()
 
-    def get_user_triggers(self, user_id: str) -> List[dict]:
-        with self._get_connection() as conn:
-            conn.row_factory = sqlite3.Row
+    def get_user_subscriptions(self, user_id: str) -> List[dict]:
+        conn = self._get_connection()
+        try:
             cursor = conn.cursor()
-            cursor.execute("SELECT * FROM user_triggers WHERE user_id = ?", (user_id,))
+            cursor.execute("SELECT * FROM user_subscriptions WHERE user_id = ?", (user_id,))
             return [dict(row) for row in cursor.fetchall()]
+        finally:
+            conn.close()
 
-    def delete_trigger(self, user_id: str, station_id: str):
-        with self._get_connection() as conn:
+    def get_all_active_subscriptions(self) -> List[dict]:
+        conn = self._get_connection()
+        try:
             cursor = conn.cursor()
-            cursor.execute("DELETE FROM user_triggers WHERE user_id = ? AND station_id = ?", (user_id, station_id))
+            cursor.execute("SELECT * FROM user_subscriptions WHERE is_active = 1")
+            return [dict(row) for row in cursor.fetchall()]
+        finally:
+            conn.close()
+
+    # --- Task Queue Methods ---
+    def add_task(self, task: ActiveTask):
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO active_tasks (sub_id, next_run, current_interval, status)
+                VALUES (?, ?, ?, ?)
+            """, (task.sub_id, task.next_run, task.current_interval, task.status))
             conn.commit()
+        finally:
+            conn.close()
 
-    def get_all_active_triggers(self) -> List[dict]:
-        with self._get_connection() as conn:
-            conn.row_factory = sqlite3.Row
+    def get_pending_tasks(self, current_time_iso: str) -> List[dict]:
+        conn = self._get_connection()
+        try:
             cursor = conn.cursor()
-            cursor.execute("SELECT * FROM user_triggers WHERE is_active = 1")
+            cursor.execute("""
+                SELECT t.*, s.user_id, s.station_id, s.threshold, s.bike_type 
+                FROM active_tasks t
+                JOIN user_subscriptions s ON t.sub_id = s.id
+                WHERE t.status = 'pending' AND t.next_run <= ?
+            """, (current_time_iso,))
             return [dict(row) for row in cursor.fetchall()]
+        finally:
+            conn.close()
+
+    def update_task_status(self, task_id: int, status: str, next_run: Optional[str] = None, interval: Optional[int] = None):
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            if next_run and interval:
+                cursor.execute("UPDATE active_tasks SET status = ?, next_run = ?, current_interval = ? WHERE id = ?", 
+                             (status, next_run, interval, task_id))
+            else:
+                cursor.execute("UPDATE active_tasks SET status = ? WHERE id = ?", (status, task_id))
+            conn.commit()
+        finally:
+            conn.close()
+
+    def delete_completed_tasks(self):
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM active_tasks WHERE status = 'completed'")
+            conn.commit()
+        finally:
+            conn.close()
+
+

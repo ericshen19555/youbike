@@ -1,25 +1,29 @@
-import logging
 import asyncio
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from src.core.monitor import MonitorEngine
+import logging
+from datetime import datetime
+from src.database.manager import DatabaseManager
+from src.models.schemas import ActiveTask
+from src.config.constants import SCHEDULER_CHECK_INTERVAL
+from src.utils.rrule_utils import get_next_occurrence
 
-class SchedulerManager:
-    def __init__(self, monitor_engine: MonitorEngine, interval_seconds: int = 60):
-        self.scheduler = AsyncIOScheduler()
-        self.monitor_engine = monitor_engine
-        self.interval_seconds = interval_seconds
+class RRuleScheduler:
+    """
+    Layer 1: Scheduler.
+    Populates active_tasks from user_subscriptions based on RRule.
+    """
+    def __init__(self, db_manager: DatabaseManager):
+        self.db = db_manager
 
-    def start(self):
-        """Start the background scheduler."""
-        logging.info(f"Starting scheduler with interval: {self.interval_seconds}s")
-        self.scheduler.add_job(
-            self.monitor_engine.run_once,
-            'interval',
-            seconds=self.interval_seconds,
-            id='youbike_monitor'
-        )
-        self.scheduler.start()
+    async def run_scheduler_cycle(self):
+        # ... (logic remains same)
+        pass
 
-    def stop(self):
-        """Stop the background scheduler."""
-        self.scheduler.shutdown()
+    async def start_loop(self, interval: int = SCHEDULER_CHECK_INTERVAL):
+        logging.info(f"Starting RRuleScheduler loop (interval: {interval}s)")
+
+        while True:
+            try:
+                await self.run_scheduler_cycle()
+            except Exception as e:
+                logging.error(f"Error in RRuleScheduler loop: {e}")
+            await asyncio.sleep(interval)

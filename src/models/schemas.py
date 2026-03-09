@@ -20,12 +20,19 @@ class StationInfo(BaseModel):
 
 
 
-class UserTrigger(BaseModel):
+class UserSubscription(BaseModel):
+    id: Optional[int] = None
     user_id: str
     station_id: str
+    rrule: str # RFC 5545 string
     threshold: int = 3
-    start_time: str  # Format: "HH:MM"
-    end_time: str    # Format: "HH:MM"
-    days_of_week: str = "1,2,3,4,5"  # Format: "1,2,3,4,5" (1=Mon, 7=Sun)
     bike_type: str = "any" # "any", "normal", "electric"
     is_active: bool = True
+
+class ActiveTask(BaseModel):
+    id: Optional[int] = None
+    sub_id: int # Link to UserSubscription
+    next_run: str # ISO format datetime
+    current_interval: int = 60 # Seconds (15, 30, 60)
+    status: str = "pending" # "pending", "running", "completed"
+
