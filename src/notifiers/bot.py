@@ -27,7 +27,10 @@ class BikeGuardBot:
         self.dp.message.register(self.text_handler) # Catch-all for NLP
 
     async def start_handler(self, message: Message):
+        chat_id = message.chat.id
+        logging.info(f"Received /start from user. Chat ID: {chat_id}")
         await message.answer(
+
             "🚲 *歡迎來到 BikeGuard YouBike 監控系統*\n\n"
             "你可以使用以下指令：\n"
             "/add [站點ID] [門檻值] - 開始追蹤\n"
@@ -109,6 +112,17 @@ class BikeGuardBot:
         else:
             await message.answer("抱歉，我還沒聽懂這個指令。請試試 `/add [站點ID] [門檻]`。")
 
+    async def set_commands(self):
+        commands = [
+            types.BotCommand(command="start", description="開始使用 BikeGuard"),
+            types.BotCommand(command="add", description="新增訂閱 (例如: /add 500101001 每天 08:30)"),
+            types.BotCommand(command="list", description="列出目前所有訂閱"),
+            types.BotCommand(command="remove", description="移除訂閱 (例如: /remove 1)"),
+            types.BotCommand(command="cancel", description="取消目前操作")
+        ]
+        await self.bot.set_my_commands(commands)
+
     async def start(self):
-        logging.info("Telegram Bot starting...")
+        logging.info("Starting Telegram Bot...")
+        await self.set_commands()
         await self.dp.start_polling(self.bot)
