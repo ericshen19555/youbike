@@ -1,6 +1,11 @@
-[project]
-name = "youbike"
-version = "0.1.0"
-description = "Add your description here"
-requires-python = ">=3.13"
-dependencies = []
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.coverage.run]
+source = ["src"]
+omit = ["src/__init__.py", "src/*/__init__.py"]
+
+[tool.coverage.report]
+show_missing = true
