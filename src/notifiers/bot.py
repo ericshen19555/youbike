@@ -30,7 +30,7 @@ class BikeGuardBot:
         self._setup_handlers()
 
     def _setup_handlers(self):
-        self.dp.message.register(self.start_handler, Command("start"))
+        self.dp.message.register(self.start_handler, Command("start", "help"))
         self.dp.message.register(self.add_handler, Command("add"))
         self.dp.message.register(self.list_handler, Command("list"))
         self.dp.message.register(self.remove_handler, Command("remove"))
@@ -76,15 +76,26 @@ class BikeGuardBot:
 
     async def start_handler(self, message: Message):
         chat_id = message.chat.id
-        logging.info(f"Received /start from user. Chat ID: {chat_id}")
+        logging.info(f"Received /start or /help from user. Chat ID: {chat_id}")
         await message.answer(
-
-            "🚲 *歡迎來到 BikeGuard YouBike 監控系統*\n\n"
-            "你可以使用以下指令：\n"
-            "/add [站點ID] [門檻值] - 開始追蹤\n"
-            "/list - 查看目前的追蹤清單\n"
-            "/remove - 移除追蹤\n\n"
-            "或者直接輸入如：*『每週五 17:00 科技大樓站 門檻 5』* (開發中)",
+            "🚲 *歡迎來到 BikeGuard YouBike 監控助手 v2.0* 🛡️\n\n"
+            "我是你的 YouBike 守護者，能幫你監控熱門站點的剩餘車輛，讓你在出門前不再撲空！\n\n"
+            "📍 *如何快速找點？*\n"
+            "1️⃣ **傳送座標**：點擊附件傳送「位置」給我，我會列出最近的 5 個站點。\n"
+            "2️⃣ **關鍵字搜尋**：直接傳送「名稱」（如：`科技大樓`）進行模糊匹配。\n\n"
+            "⏰ *如何訂閱監控？*\n"
+            "使用 `/add` 指令，格式如下：\n"
+            "`/add [站點] [門檻] [頻率時間] [車型(可選)]`\n\n"
+            "💡 *例如：*\n"
+            "• `/add 科技大樓 3 每天 08:30` (2.0 普通)\n"
+            "• `/add 中山國小 5 每天 17:30 電輔` (2.0E 電輔)\n\n"
+            "🔍 *查詢即時資訊：*\n"
+            "使用 `/query [名稱]` 查看即時車位、地址與詳細資料。\n\n"
+            "📋 *其他指令：*\n"
+            "/list - 查看目前的監控清單\n"
+            "/remove [站點] - 移除監控任務\n"
+            "/cancel - 取消目前的操作\n\n"
+            "💡 *系統提示：* 我會在設定時間的 **20 分鐘前** 開始自動監控。",
             parse_mode="Markdown"
         )
 
@@ -385,15 +396,24 @@ class BikeGuardBot:
                 parse_mode="Markdown"
             )
         else:
-            await message.answer("抱歉，我還沒聽懂這個指令。\n💡 傳送『座標』給我直接尋找最近站點，或輸入『站點關鍵字』搜尋。")
+            await message.answer(
+                "❌ *抱歉，我還沒聽懂這個指令。*\n\n"
+                "💡 **你可以試試看：**\n"
+                "• 傳送「站點名稱」直接搜尋站點。\n"
+                "• 傳送「地理座標」尋找附近站點。\n"
+                "• 使用 `/add 站點名 門檻 時間` 設定監控。\n"
+                "• 輸入 `/help` 查看完整教學。",
+                parse_mode="Markdown"
+            )
 
     async def set_commands(self):
         commands = [
             types.BotCommand(command="start", description="開始使用 BikeGuard"),
-            types.BotCommand(command="add", description="新增訂閱 (可使用站點名/ID)"),
-            types.BotCommand(command="list", description="列出目前所有訂閱 (顯示名稱)"),
-            types.BotCommand(command="remove", description="移除訂閱 (可使用站點名/ID)"),
-            types.BotCommand(command="query", description="查詢站點詳情 (含即時資料)"),
+            types.BotCommand(command="help", description="查看詳細功能教學"),
+            types.BotCommand(command="add", description="新增監控 (站點名/時間)"),
+            types.BotCommand(command="list", description="列出目前訂閱項目"),
+            types.BotCommand(command="remove", description="移除監控項目"),
+            types.BotCommand(command="query", description="查詢站點即時資訊"),
             types.BotCommand(command="cancel", description="取消目前操作")
         ]
         await self.bot.set_my_commands(commands)
