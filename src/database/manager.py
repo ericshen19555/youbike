@@ -128,7 +128,7 @@ class DatabaseManager:
         try:
             cursor = conn.cursor()
             cursor.execute("""
-                SELECT t.*, s.user_id, s.station_id, s.threshold, s.bike_type 
+                SELECT t.*, s.user_id, s.station_id, s.threshold, s.bike_type, s.rrule
                 FROM active_tasks t
                 JOIN user_subscriptions s ON t.sub_id = s.id
                 WHERE t.status = 'pending' AND t.next_run <= ?

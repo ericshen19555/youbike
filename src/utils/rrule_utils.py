@@ -5,10 +5,20 @@ from typing import Optional
 def get_next_occurrence(rrule_str: str, after_dt: Optional[datetime] = None) -> Optional[datetime]:
     """
     Calculate the next occurrence of an RRule after a given datetime.
+    Supports standard RFC 5545 RRules and custom 'ONCE:ISO_DATETIME' format.
     """
     if after_dt is None:
         after_dt = datetime.now()
     
+    # 1. Handle custom ONCE format
+    if rrule_str.startswith("ONCE:"):
+        try:
+            target_dt = datetime.fromisoformat(rrule_str[5:])
+            return target_dt if target_dt > after_dt else None
+        except (ValueError, IndexError):
+            return None
+
+    # 2. Handle standard RRule
     try:
         rule = rrulestr(rrule_str)
         return rule.after(after_dt)

@@ -56,7 +56,7 @@ async def main():
         notifiers.append(TelegramNotifier(telegram_token, telegram_chat_id))
         logging.info("Telegram Notifier enabled.")
     # 5. Initialize Layers
-    monitor_engine = MonitorEngine(api_client, user_service, notifiers)
+    monitor_engine = MonitorEngine(api_client, user_service, station_service, notifiers)
     rrule_scheduler = RRuleScheduler(db_manager)
     
     # 6. Initialize Bot (Layer 3)

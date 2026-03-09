@@ -40,7 +40,7 @@ class BikeGuardBot:
         self.dp.message.register(self.remove_handler, Command("remove"))
         self.dp.message.register(self.query_handler, Command("query"))
         self.dp.message.register(self.cancel_handler, Command("cancel"))
-        self.dp.message.register(self.number_selection_handler, lambda m: m.text.isdigit() and str(m.chat.id) in self._last_search_results)
+        self.dp.message.register(self.number_selection_handler, lambda m: str(m.chat.id) in self._last_search_results)
         self.dp.message.register(self.location_handler, lambda m: m.location is not None)
         self.dp.message.register(self.text_handler) # Catch-all for NLP and search
 
@@ -69,7 +69,16 @@ class BikeGuardBot:
 
 
 
+    async def _check_and_cancel_pending(self, message: Message):
+        """Internal helper to auto-cancel pending selections when a new command starts."""
+        uid = str(message.chat.id)
+        if uid in self._last_search_results:
+            state = self._last_search_results.pop(uid)
+            prev_cmd = state.get("command", "操作")
+            await message.answer(f"⚠️ *偵測到新指令，已自動取消先前的 `{prev_cmd}` 操作環境。*", parse_mode="Markdown")
+
     async def start_handler(self, message: Message):
+        await self._check_and_cancel_pending(message)
         chat_id = message.chat.id
         logging.info(f"Received /start or /help from user. Chat ID: {chat_id}")
         await message.answer(
@@ -95,17 +104,19 @@ class BikeGuardBot:
         )
 
     async def add_handler(self, message: Message):
+        await self._check_and_cancel_pending(message)
         # Example: /add [名稱/ID] [門檻值] [時間規則] [車型]
         args = message.text.split()
         if len(args) < 2:
             await message.answer(
-                "❌ *格式錯誤*\n請輸入：`/add [站點名稱 或 ID] [門檻值] [時間規則] [車型(可選)]`\n"
+                "➕ *新增監控說明*\n格式：`/add [站點名稱 或 ID] [門檻值] [時間規則] [車型]`\n"
                 "例如：`/add 科技大樓 3 每天 08:30`",
                 parse_mode="Markdown"
             )
             return
-            
-        target_query = args[1]
+        await self._process_add(message, args[1], args[2:])
+
+    async def _process_add(self, message: Message, target_query: str, sub_args: List[str]):
         matches = await self._find_stations(target_query)
         
         if not matches:
@@ -114,18 +125,19 @@ class BikeGuardBot:
             
         if len(matches) > 1:
             self._last_search_results[str(message.chat.id)] = {
-                "matches": matches,
+                "matches": matches[:10],
                 "command": "add",
-                "args": args[2:] # Store threshold, time, etc.
+                "args": sub_args
             }
-            resp = "🧐 *找到多個相似站點，請輸入編號 (1-n) 來選擇：*\n\n"
-            for i, s in enumerate(matches, 1):
+            resp = "🧐 *找到多個相似站點，請輸入編號來選擇：*\n\n"
+            for i, s in enumerate(matches[:10], 1):
                 resp += f"{i}. 🏠 `{s.sna}` (ID: `{s.sno}`)\n"
+            resp += "\n💡 *你也可以直接輸入新的名稱或 ID 重新搜尋。*"
             await message.answer(resp, parse_mode="Markdown")
             return
             
         # Exactly one match
-        await self._register_sub_with_station(message, matches[0], args[2:])
+        await self._register_sub_with_station(message, matches[0], sub_args)
 
     async def _register_sub_with_station(self, message: types.Message, station: StationInfo, sub_args: List[str]):
         # sub_args: [threshold, time_rule, bike_type...]
@@ -134,22 +146,29 @@ class BikeGuardBot:
         except (ValueError, IndexError):
             threshold = DEFAULT_THRESHOLD
             
-        full_text = " ".join(sub_args[1:]) if len(sub_args) > 1 else "每天 00:00"
-        
         # 1. Extract bike type
         bike_type = "any"
-        if "電輔" in full_text or "電" in full_text:
+        full_sub_text = " ".join(sub_args)
+        if "電輔" in full_sub_text:
             bike_type = "electric"
-            type_display = "2.0E (電輔)"
-        elif "普通" in full_text or "一般" in full_text:
+        elif "普通" in full_sub_text or "一般" in full_sub_text:
             bike_type = "normal"
-            type_display = "2.0 (普通)"
-        else:
-            type_display = "兩者皆可"
-            
-        # 2. Extract and parse time
-        rrule = parse_natural_language_to_rrule(full_text)
         
+        type_display = {"any": "不限 (2.0/2.0E)", "normal": "一般 (2.0)", "electric": "電輔 (2.0E)"}[bike_type]
+
+        # 2. Extract and parse time - Support one-time default
+        if len(sub_args) <= 1:
+            # Case 1: /add [station] [threshold?] -> 30m from now, once
+            from datetime import timedelta
+            target_time = datetime.now() + timedelta(minutes=30)
+            rrule = f"ONCE:{target_time.isoformat()}"
+            rule_display = f"單次提醒 (預設 30 分鐘後: {target_time.strftime('%H:%M')})"
+        else:
+            # Case 2: Natural language rrule
+            full_text = " ".join(sub_args[1:])
+            rrule = parse_natural_language_to_rrule(full_text)
+            rule_display = f"規律提醒 (`{rrule}`)"
+
         await self.user_service.register_subscription(
             user_id=str(message.chat.id),
             station_id=station.sno,
@@ -159,12 +178,12 @@ class BikeGuardBot:
         )
         
         await message.answer(
-            f"✅ *定時監控已開啟！*\n\n"
-            f"📍 站點：`{station.sna}` (ID: `{station.sno}`)\n"
+            f"✅ *監控已開啟！*\n\n"
+            f"📍 站點：`{station.sna}`\n"
             f"🎯 門檻：{threshold} 輛\n"
             f"🚲 車型：{type_display}\n"
-            f"⏰ 規則：{full_text} (`{rrule}`)\n\n"
-            f"💡 系統將在指定時間前 **20 分鐘** 開始監控，若車輛過低會即時通知。",
+            f"⏰ 規則：{rule_display}\n\n"
+            f"💡 {'任務執行後會自動結束' if rrule == 'once' else '系統將自動持續監控'}。",
             parse_mode="Markdown"
         )
 
@@ -175,38 +194,56 @@ class BikeGuardBot:
             
         state = self._last_search_results[user_id]
         matches = state.get("matches", [])
-        try:
-            choice_idx = int(message.text) - 1
-            if 0 <= choice_idx < len(matches):
-                selected = matches[choice_idx]
-                command = state.get("command")
-                
-                if command == "add":
-                    await self._register_sub_with_station(message, selected, state.get("args", []))
-                elif command == "remove":
-                    self.user_service.remove_subscription(user_id, selected.sno)
-                    await message.answer(f"✅ 已成功移除站點 `[{selected.sna}]` 的監控任務。", parse_mode="Markdown")
-                elif command == "query":
-                    await self._send_detailed_query(message, selected)
+        text = message.text or ""
+        command = state.get("command")
+        
+        # 1. Handle Digit Selection
+        if text.isdigit():
+            try:
+                choice_idx = int(text) - 1
+                if 0 <= choice_idx < len(matches):
+                    selected = matches[choice_idx]
                     
-                self._last_search_results.pop(user_id, None)
-            else:
-                await message.answer(f"❌ 請輸入有效編號 (1-{len(matches)})。")
-        except (ValueError, KeyError, TypeError):
-            pass
+                    if command == "add":
+                        await self._register_sub_with_station(message, selected, state.get("args", []))
+                    elif command == "remove":
+                        self.user_service.remove_subscription(user_id, selected.sno)
+                        await message.answer(f"✅ 已成功移除站點 `[{selected.sna}]` 的監控任務。", parse_mode="Markdown")
+                    elif command == "query":
+                        await self._send_detailed_query(message, selected)
+                        
+                    self._last_search_results.pop(user_id, None)
+                    return
+            except (ValueError, KeyError, TypeError):
+                pass
+
+        # 2. If NOT a digit: Treat as a RE-SEARCH for the existing command
+        self._last_search_results.pop(user_id, None)
+        
+        if command == "add":
+            await self._process_add(message, text, state.get("args", []))
+        elif command == "query":
+            await self._process_query(message, text)
+        elif command == "remove":
+            await self._process_remove(message, text)
+        else:
+            # Fallback to general text search if command unknown
+            await self.text_handler(message)
 
 
     async def query_handler(self, message: Message):
+        await self._check_and_cancel_pending(message)
         args = message.text.split()
         if len(args) < 2:
             await message.answer("🔍 請輸入 `/query [站點名稱 或 ID]` 來查詢詳細資訊。")
             return
-            
-        query = args[1]
-        matches = await self._find_stations(query)
+        await self._process_query(message, args[1])
+
+    async def _process_query(self, message: Message, target_query: str):
+        matches = await self._find_stations(target_query)
         
         if not matches:
-            await message.answer(f"❓ 找不到任何站點符合『{query}』。")
+            await message.answer(f"❓ 找不到任何站點符合『{target_query}』。")
             return
             
         if len(matches) > 1:
@@ -218,9 +255,11 @@ class BikeGuardBot:
             resp = "🧐 *找到多個相似站點，請輸入編號來查詢：*\n\n"
             for i, s in enumerate(matches[:10], 1):
                 resp += f"{i}. 🏠 `{s.sna}` (ID: `{s.sno}`)\n"
+            resp += "\n💡 *你也可以直接輸入新的名稱或 ID 重新搜尋。*"
             await message.answer(resp, parse_mode="Markdown")
             return
             
+        # Exactly one match
         await self._send_detailed_query(message, matches[0])
 
     async def _send_detailed_query(self, message: Message, station: StationInfo):
@@ -276,6 +315,7 @@ class BikeGuardBot:
         await message.answer(text, parse_mode="Markdown")
 
     async def remove_handler(self, message: Message):
+        await self._check_and_cancel_pending(message)
         args = message.text.split()
         user_id = str(message.chat.id)
         
@@ -289,26 +329,30 @@ class BikeGuardBot:
             await message.answer("✅ 已成功清空你所有的監控任務。")
             return
 
-        matches = await self._find_stations(target)
+        await self._process_remove(message, target)
+
+    async def _process_remove(self, message: Message, target_query: str):
+        matches = await self._find_stations(target_query)
         if not matches:
-            await message.answer(f"❓ 找不到任何站點符合『{target}』。")
+            await message.answer(f"❓ 找不到任何站點符合『{target_query}』。")
             return
             
         if len(matches) > 1:
-            self._last_search_results[user_id] = {
-                "matches": matches,
+            self._last_search_results[str(message.chat.id)] = {
+                "matches": matches[:10],
                 "command": "remove",
                 "args": []
             }
             resp = "🧐 *找到多個可能要移除的站點，請輸入編號來確認：*\n\n"
-            for i, s in enumerate(matches, 1):
+            for i, s in enumerate(matches[:10], 1):
                 resp += f"{i}. 🏠 `{s.sna}` (ID: `{s.sno}`)\n"
+            resp += "\n💡 *你也可以直接輸入新的名稱或 ID 重新搜尋。*"
             await message.answer(resp, parse_mode="Markdown")
             return
             
         # One match
         selected = matches[0]
-        self.user_service.remove_subscription(user_id, selected.sno)
+        self.user_service.remove_subscription(str(message.chat.id), selected.sno)
         await message.answer(f"✅ 已成功移除站點 `[{selected.sna}]` 的監控任務。", parse_mode="Markdown")
 
 

@@ -6,12 +6,14 @@ from src.api.client import YouBikeClient
 from src.models.schemas import StationInfo
 from src.config.constants import DYNAMIC_INTERVAL_HIGH, DYNAMIC_INTERVAL_MEDIUM, DYNAMIC_INTERVAL_LOW
 from src.core.user_service import UserService
+from src.core.station_service import StationService
 from src.notifiers.base import BaseNotifier
 
 class MonitorEngine:
-    def __init__(self, api_client: YouBikeClient, user_service: UserService, notifiers: List[BaseNotifier]):
+    def __init__(self, api_client: YouBikeClient, user_service: UserService, station_service: StationService, notifiers: List[BaseNotifier]):
         self.api_client = api_client
         self.user_service = user_service
+        self.station_service = station_service
         self.notifiers = notifiers
 
     def _is_in_time_window(self, start_str: str, end_str: str, days_str: str) -> bool:
@@ -43,9 +45,9 @@ class MonitorEngine:
         # 1. Gather all unique station IDs for batching
         station_ids = list(set(t['station_id'] for t in tasks))
         
-        # 2. Fetch metadata (can be cached in a real app, but here we fetch once per cycle)
-        # Note: fetch_station_list is expensive, maybe we should cache it in self.
-        station_metadata = {s.sno: s for s in await self.api_client.fetch_station_list()}
+        # 2. Fetch metadata from StationService (Cached/DB)
+        stations = await self.station_service.get_stations()
+        station_metadata = {s.sno: s for s in stations}
         
         # 3. Batch fetch real-time parking info (max 20 per request is good)
         all_realtime_data = {}
@@ -104,18 +106,18 @@ class MonitorEngine:
                     await notifier.send_notification(message, chat_id=task['user_id'])
 
 
-            # 5. Schedule next run
-            next_run_dt = datetime.now() + timedelta(seconds=new_interval)
-            
-            # Note: We should verify if the task's monitoring window is still open.
-            # For this MVP, let's keep it running for 60 minutes after start.
-            # (In a full implementation, we'd check against a 'stop' condition or duration)
-            self.user_service.db.update_task_status(
-                task_id, 
-                status='pending', 
-                next_run=next_run_dt.isoformat(), 
-                interval=new_interval
-            )
+            # 5. Schedule next run or DELETE if one-time
+            if is_triggered and task.get('rrule', '').startswith('ONCE:'):
+                logging.info(f"One-time task {task_id} (sub {task['sub_id']}) completed. Deleting subscription.")
+                self.user_service.remove_subscription(task['user_id'], station_id)
+            else:
+                next_run_dt = datetime.now() + timedelta(seconds=new_interval)
+                self.user_service.db.update_task_status(
+                    task_id, 
+                    status='pending', 
+                    next_run=next_run_dt.isoformat(), 
+                    interval=new_interval
+                )
 
     async def run_once(self):
         """Legacy method for backward compatibility/quick tests."""
