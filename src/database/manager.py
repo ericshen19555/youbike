@@ -134,6 +134,40 @@ class DatabaseManager:
         finally:
             conn.close()
 
+    def add_task(self, task: ActiveTask):
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO active_tasks (sub_id, next_run, current_interval, status)
+                VALUES (?, ?, ?, ?)
+            """, (task.sub_id, task.next_run, task.current_interval, task.status))
+            conn.commit()
+        finally:
+            conn.close()
+
+    def get_tasks_for_subscription(self, sub_id: int, status: Optional[str] = None) -> List[dict]:
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            if status:
+                cursor.execute("SELECT * FROM active_tasks WHERE sub_id = ? AND status = ?", (sub_id, status))
+            else:
+                cursor.execute("SELECT * FROM active_tasks WHERE sub_id = ?", (sub_id,))
+            return [dict(row) for row in cursor.fetchall()]
+        finally:
+            conn.close()
+
+    def get_all_active_subscriptions(self) -> List[dict]:
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM user_subscriptions WHERE is_active = 1")
+            return [dict(row) for row in cursor.fetchall()]
+        finally:
+            conn.close()
+
+
     def delete_subscription(self, user_id: str, station_id: str):
         conn = self._get_connection()
         try:

@@ -45,22 +45,26 @@ class BikeGuardBot:
         )
 
     async def add_handler(self, message: Message):
-        # Example: /add 500101001 5
+        # Example: /add 500101001 3 每天 08:30
         args = message.text.split()
         if len(args) < 3:
-            await message.answer("請輸入正確格式：`/add [站點ID] [門檻值]`\n例如：`/add 500101001 3`", parse_mode="Markdown")
+            await message.answer(
+                "❌ *格式錯誤*\n請輸入：`/add [站點ID] [門檻值] [時間規則]`\n"
+                "例如：`/add 500101001 3 每天 08:30` 或 `/add 500101001 3 每週五 17:00`",
+                parse_mode="Markdown"
+            )
             return
             
         station_id = args[1]
         try:
             threshold = int(args[2])
         except ValueError:
-            await message.answer("門檻值必須是數字。")
+            await message.answer("❌ 門檻值必須是數字。")
             return
             
-        # For simple /add, default to 'everyday now' or ask for time. 
-        # Here we'll default to everyday 00:00 for simplicity or prompt for NLP
-        rrule = "FREQ=DAILY;BYHOUR=0;BYMINUTE=0" 
+        # Parse the remaining text as the RRule
+        nlp_text = " ".join(args[3:]) if len(args) > 3 else "每天 00:00"
+        rrule = parse_natural_language_to_rrule(nlp_text)
         
         await self.user_service.register_subscription(
             user_id=str(message.chat.id),
@@ -68,7 +72,16 @@ class BikeGuardBot:
             threshold=threshold,
             rrule=rrule
         )
-        await message.answer(f"✅ 已成功為你開啟站點 `{station_id}` 的監控！\n預設為每天凌晨開始，建議輸入具體時間進行調整。", parse_mode="Markdown")
+        
+        await message.answer(
+            f"✅ *定時監控已開啟！*\n\n"
+            f"📍 站點：`{station_id}`\n"
+            f"🎯 門檻：{threshold} 輛\n"
+            f"⏰ 規則：{nlp_text} (`{rrule}`)\n\n"
+            f"機器人將在指定時間開始，若車輛低於門檻將持續提醒直到恢復或逾時。",
+            parse_mode="Markdown"
+        )
+
 
     async def list_handler(self, message: Message):
         subs = self.user_service.get_subscriptions(str(message.chat.id))
