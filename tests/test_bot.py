@@ -105,28 +105,30 @@ class TestRegisterSub:
         assert "5" in text
 
     @pytest.mark.asyncio
-    async def test_with_electric_type(self, bot):
+    async def test_with_electric_type_short(self, bot):
         msg = FakeMessage()
         station = SAMPLE_STATIONS[2]
-        await bot._register_sub_with_station(msg, station, ["3", "每天", "08:30", "電輔"])
+        await bot._register_sub_with_station(msg, station, ["3", "每天", "08:30", "e"])
         text = msg.answer.call_args[0][0]
         assert "電輔" in text
 
     @pytest.mark.asyncio
-    async def test_with_normal_type(self, bot):
+    async def test_with_normal_type_short(self, bot):
         msg = FakeMessage()
         station = SAMPLE_STATIONS[2]
-        await bot._register_sub_with_station(msg, station, ["3", "每天", "08:30", "普通"])
+        await bot._register_sub_with_station(msg, station, ["3", "每天", "08:30", "n"])
         text = msg.answer.call_args[0][0]
         assert "一般" in text
 
     @pytest.mark.asyncio
-    async def test_with_一般_type(self, bot):
+    async def test_everyday_does_not_trigger_electric(self, bot):
         msg = FakeMessage()
         station = SAMPLE_STATIONS[2]
-        await bot._register_sub_with_station(msg, station, ["3", "每天", "08:30", "一般"])
+        # "everyday" contains "e", but should not trigger electric because we check exact match for English
+        await bot._register_sub_with_station(msg, station, ["3", "everyday", "08:30"])
         text = msg.answer.call_args[0][0]
-        assert "一般" in text
+        assert "不限" in text
+        assert "electric" not in text.lower()
 
     @pytest.mark.asyncio
     async def test_invalid_threshold_defaults(self, bot):

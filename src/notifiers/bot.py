@@ -146,14 +146,19 @@ class BikeGuardBot:
         except (ValueError, IndexError):
             threshold = DEFAULT_THRESHOLD
             
-        # 1. Extract bike type
+        # 1. Extract bike type from the last argument chunk
         bike_type = "any"
-        full_sub_text = " ".join(sub_args)
-        if "電輔" in full_sub_text:
-            bike_type = "electric"
-        elif "普通" in full_sub_text or "一般" in full_sub_text:
-            bike_type = "normal"
-        
+        if sub_args:
+            last_chunk = sub_args[-1].lower()
+            # Match "電", "E", "e" for electric (exact for English to avoid 'everyday')
+            if "電" in last_chunk or last_chunk.startswith("e"):
+                bike_type = "electric"
+                sub_args.pop()
+            # Match "普通", "一般", "N", "n" for normal
+            elif any(k in last_chunk for k in ["普通", "一般"]) or last_chunk.startswith("n"):
+                bike_type = "normal"
+                sub_args.pop()
+
         type_display = {"any": "不限 (2.0/2.0E)", "normal": "一般 (2.0)", "electric": "電輔 (2.0E)"}[bike_type]
 
         # 2. Extract and parse time - Support one-time default
