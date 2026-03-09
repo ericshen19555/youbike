@@ -17,3 +17,6 @@ dist/
 # VS Code
 .vscode/
 .antigravity/
+
+# IDEs
+.idea/
