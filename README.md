@@ -92,6 +92,7 @@ python main.py
 ### 📅 第四階段：可靠性與完工 (Reliability & Completion)
 - **核心里程碑**：177 個測試案例、99% 覆蓋率、工作區清理。
 - **codebase 優化**：清理死碼 (Dead Code)、實作預備函式的 `NotImplementedError` 並標準化抽象介面實作。
+- **RRule 中文化系統**：實作自然語言格式化工具，將技術字串轉為更親切的中文描述（如：`每天 08:30`）。
 
 ---
 
