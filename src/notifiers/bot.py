@@ -188,7 +188,7 @@ class BikeGuardBot:
             f"🎯 門檻：{threshold} 輛\n"
             f"🚲 車型：{type_display}\n"
             f"⏰ 規則：{rule_display}\n\n"
-            f"💡 {'任務執行後會自動結束' if rrule == 'once' else '系統將自動持續監控'}。",
+            f"💡 {'任務執行後會自動結束' if rrule.startswith("ONCE") else '系統將自動持續監控'}。",
             parse_mode="Markdown"
         )
 
