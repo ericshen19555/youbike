@@ -30,9 +30,10 @@ class MonitorEngine:
         1. Fetch due tasks from DB.
         2. Batch station requests.
         3. Check thresholds and alert.
-        4. Update next_run based on dynamic interval.
+        4. Update next_run based on dynamic interval or retire task.
         """
-        now_iso = datetime.now().isoformat()
+        now = datetime.now()
+        now_iso = now.isoformat()
         tasks = self.user_service.db.get_pending_tasks(now_iso)
         
         if not tasks:
@@ -45,7 +46,7 @@ class MonitorEngine:
         stations = await self.station_service.get_stations()
         station_metadata = {s.sno: s for s in stations}
         
-        # 3. Batch fetch real-time parking info (max 20 per request is good)
+        # 3. Batch fetch real-time parking info
         all_realtime_data = {}
         for i in range(0, len(station_ids), 20):
             batch = station_ids[i:i+20]
@@ -56,7 +57,19 @@ class MonitorEngine:
         for task in tasks:
             task_id = task['id']
             station_id = task['station_id']
+            target_time_str = task.get('target_time')
             
+            # Retirement Check: If more than 10 mins past target time, retire task
+            if target_time_str:
+                try:
+                    target_dt = datetime.fromisoformat(target_time_str)
+                    if now > target_dt + timedelta(minutes=10):
+                        logging.info(f"Task {task_id} (sub {task['sub_id']}) monitoring window closed (Target was {target_time_str}). Retiring task.")
+                        self.user_service.db.update_task_status(task_id, status='completed')
+                        continue
+                except (ValueError, TypeError):
+                    pass
+
             if station_id not in all_realtime_data:
                 continue
 
@@ -102,7 +115,7 @@ class MonitorEngine:
 
                 if should_notify:
                     if not self.notifiers:
-                        logging.warning(f"⚠️ Alert triggered for station {station_id} (sub {task['sub_id']}), but no notification channels (notifiers) are configured.")
+                        logging.warning(f"Alert triggered for station {station_id} (sub {task['sub_id']}), but no notification channels (notifiers) are configured.")
                     else:
                         sna = station_metadata.get(station_id, StationInfo(sno=station_id, sna=station_id)).sna
                         message = (
@@ -119,7 +132,7 @@ class MonitorEngine:
                             success = await notifier.send_notification(message, chat_id=task['user_id'])
                             if success:
                                 notification_sent = True
-                                logging.info(f"🚨 [NOTIFY] Successfully alerted user for station '{sna}' ({current_count} {type_label} bikes left)")
+                                logging.info(f"[NOTIFY] Successfully alerted user for station '{sna}' ({current_count} {type_label} bikes left)")
 
             # 5. Schedule next run or DELETE if one-time
             if is_triggered and task.get('rrule', '').startswith('ONCE:'):

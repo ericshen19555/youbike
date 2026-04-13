@@ -35,6 +35,8 @@ class ActiveTask(BaseModel):
     id: Optional[int] = None
     sub_id: int # Link to UserSubscription
     next_run: str # ISO format datetime
+    target_time: Optional[str] = None # ISO format (The actual recurrence time)
     current_interval: int = 60 # Seconds (15, 30, 60)
     status: str = "pending" # "pending", "running", "completed"
+    last_notified_at: Optional[str] = None
 

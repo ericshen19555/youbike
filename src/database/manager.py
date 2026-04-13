@@ -81,16 +81,23 @@ class DatabaseManager:
                     current_interval INTEGER DEFAULT 60,
                     status TEXT DEFAULT 'pending',
                     last_notified_at TEXT,
+                    target_time TEXT,
                     FOREIGN KEY (sub_id) REFERENCES user_subscriptions(id)
                 )
             ''')
             
-            # Migration for active_tasks: check if last_notified_at exists
+            # Migration for active_tasks: check if columns exist
             cursor.execute("PRAGMA table_info(active_tasks)")
             task_cols = cursor.fetchall()
-            if not any(col[1] == 'last_notified_at' for col in task_cols):
+            col_names = [col[1] for col in task_cols]
+            
+            if 'last_notified_at' not in col_names:
                 logging.info("Database migration: Adding 'last_notified_at' column to 'active_tasks' table.")
                 cursor.execute("ALTER TABLE active_tasks ADD COLUMN last_notified_at TEXT")
+                
+            if 'target_time' not in col_names:
+                logging.info("Database migration: Adding 'target_time' column to 'active_tasks' table.")
+                cursor.execute("ALTER TABLE active_tasks ADD COLUMN target_time TEXT")
 
             # 3. Station Metadata Cache
             cursor.execute('''
@@ -172,9 +179,9 @@ class DatabaseManager:
         try:
             cursor = conn.cursor()
             cursor.execute("""
-                INSERT INTO active_tasks (sub_id, next_run, current_interval, status)
-                VALUES (?, ?, ?, ?)
-            """, (task.sub_id, task.next_run, task.current_interval, task.status))
+                INSERT INTO active_tasks (sub_id, next_run, current_interval, status, target_time)
+                VALUES (?, ?, ?, ?, ?)
+            """, (task.sub_id, task.next_run, task.current_interval, task.status, task.target_time))
             conn.commit()
         finally:
             conn.close()

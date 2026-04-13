@@ -48,6 +48,7 @@ class RRuleScheduler:
                     task = ActiveTask(
                         sub_id=sub_id,
                         next_run=next_run.isoformat(),
+                        target_time=base_next_run.isoformat(),
                         current_interval=60, 
                         status='pending'
                     )
