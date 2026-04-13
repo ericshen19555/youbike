@@ -24,3 +24,6 @@ PRE_MONITOR_LEAD_TIME_MINUTES = 20 # Start monitoring 20 minutes before the targ
 SCHEDULER_CHECK_INTERVAL = 60
 WORKER_CHECK_INTERVAL = int(os.getenv("WORKER_CHECK_INTERVAL", 15))
 
+# --- Notification Policy ---
+NOTIFICATION_COOLDOWN_SECONDS = 600 # 10 minutes
+

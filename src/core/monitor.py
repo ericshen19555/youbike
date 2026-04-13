@@ -4,7 +4,12 @@ from datetime import datetime, timedelta
 from typing import List, Dict
 from src.api.client import YouBikeClient
 from src.models.schemas import StationInfo
-from src.config.constants import DYNAMIC_INTERVAL_HIGH, DYNAMIC_INTERVAL_MEDIUM, DYNAMIC_INTERVAL_LOW
+from src.config.constants import (
+    DYNAMIC_INTERVAL_HIGH, 
+    DYNAMIC_INTERVAL_MEDIUM, 
+    DYNAMIC_INTERVAL_LOW,
+    NOTIFICATION_COOLDOWN_SECONDS
+)
 from src.core.user_service import UserService
 from src.core.station_service import StationService
 from src.notifiers.base import BaseNotifier
@@ -83,14 +88,15 @@ class MonitorEngine:
             # If triggered, notify
             notification_sent = False
             if is_triggered:
-                # Cooldown check: 10 minutes (600 seconds)
+                # Cooldown check:
                 should_notify = True
                 last_notify_str = task.get('last_notified_at')
                 if last_notify_str:
                     try:
                         last_notify = datetime.fromisoformat(last_notify_str)
-                        if (datetime.now() - last_notify).total_seconds() < 600:
+                        if (datetime.now() - last_notify).total_seconds() < NOTIFICATION_COOLDOWN_SECONDS:
                             should_notify = False
+                            logging.info(f"Notification suppressed for station {station_id} (sub {task['sub_id']}) due to cooldown.")
                     except (ValueError, TypeError):
                         pass
 
@@ -113,6 +119,7 @@ class MonitorEngine:
                             success = await notifier.send_notification(message, chat_id=task['user_id'])
                             if success:
                                 notification_sent = True
+                                logging.info(f"🚨 [NOTIFY] Successfully alerted user for station '{sna}' ({current_count} {type_label} bikes left)")
 
             # 5. Schedule next run or DELETE if one-time
             if is_triggered and task.get('rrule', '').startswith('ONCE:'):

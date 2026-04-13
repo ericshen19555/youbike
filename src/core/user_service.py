@@ -1,3 +1,4 @@
+import logging
 from src.database.manager import DatabaseManager
 from src.models.schemas import UserSubscription
 from typing import List
@@ -19,6 +20,7 @@ class UserService:
             bike_type=bike_type
         )
         sub_id = self.db.add_or_update_subscription(sub)
+        logging.info(f"User {user_id} registered/updated subscription for station {station_id} (Type: {bike_type}, Threshold: {threshold})")
         return sub_id
 
     def get_subscriptions(self, user_id: str) -> List[dict]:
@@ -29,10 +31,12 @@ class UserService:
 
     def remove_subscription(self, user_id: str, station_id: str):
         self.db.delete_subscription(user_id, station_id)
+        logging.info(f"User {user_id} removed all subscriptions for station {station_id}")
         return True
 
     def remove_subscription_by_id(self, sub_id: int):
         self.db.delete_subscription_by_id(sub_id)
+        logging.info(f"Subscription {sub_id} removed by user selection.")
         return True
 
     def clear_all_subscriptions(self, user_id: str):

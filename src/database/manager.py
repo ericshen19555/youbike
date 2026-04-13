@@ -1,4 +1,5 @@
 import sqlite3
+import logging
 import os
 from typing import List, Optional
 from datetime import datetime
@@ -47,6 +48,7 @@ class DatabaseManager:
                 col_names = [i[2] for i in info]
                 if set(col_names) == {'user_id', 'station_id'}:
                     need_migration = True
+                    logging.info("Database migration: Detected legacy subscription schema. Migrating to RRule-based unique index...")
                     break
             
             if need_migration:
@@ -87,6 +89,7 @@ class DatabaseManager:
             cursor.execute("PRAGMA table_info(active_tasks)")
             task_cols = cursor.fetchall()
             if not any(col[1] == 'last_notified_at' for col in task_cols):
+                logging.info("Database migration: Adding 'last_notified_at' column to 'active_tasks' table.")
                 cursor.execute("ALTER TABLE active_tasks ADD COLUMN last_notified_at TEXT")
 
             # 3. Station Metadata Cache
