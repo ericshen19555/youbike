@@ -13,6 +13,7 @@ from typing import List, Dict, Optional
 from src.core.user_service import UserService
 from src.core.station_service import StationService
 from src.utils.nlp_parser import parse_natural_language_to_rrule
+from src.utils.rrule_utils import format_rrule_for_display
 from src.config.constants import DEFAULT_THRESHOLD
 from src.utils.geo_utils import calculate_distance
 from src.api.client import YouBikeClient
@@ -167,12 +168,12 @@ class BikeGuardBot:
             from datetime import timedelta
             target_time = datetime.now() + timedelta(minutes=30)
             rrule = f"ONCE:{target_time.isoformat()}"
-            rule_display = f"單次提醒 (預設 30 分鐘後: {target_time.strftime('%H:%M')})"
+            rule_display = format_rrule_for_display(rrule)
         else:
             # Case 2: Natural language rrule
             full_text = " ".join(sub_args[1:])
             rrule = parse_natural_language_to_rrule(full_text)
-            rule_display = f"規律提醒 (`{rrule}`)"
+            rule_display = format_rrule_for_display(rrule)
 
         await self.user_service.register_subscription(
             user_id=str(message.chat.id),
@@ -319,7 +320,8 @@ class BikeGuardBot:
             type_map = {"any": "兩者", "normal": "普通", "electric": "電輔"}
             type_label = type_map.get(s['bike_type'], "兩者")
             sna = station_map.get(s['station_id'], s['station_id'])
-            text += f"{i}. 🏠 *{sna}* (`{s['station_id']}`)\n   門檻: {s['threshold']} | 車型: {type_label}\n   規則: `{s['rrule']}`\n\n"
+            rule_desc = format_rrule_for_display(s['rrule'])
+            text += f"{i}. 🏠 *{sna}* (`{s['station_id']}`)\n   門檻: {s['threshold']} | 車型: {type_label}\n   規則: `{rule_desc}`\n\n"
         
         text += "💡 使用 `/remove [站點名稱/ID]` 來移除監控。"
         await message.answer(text, parse_mode="Markdown")
@@ -403,7 +405,8 @@ class BikeGuardBot:
             }
             resp = f"🧐 *站點 `[{station.sna}]` 有多個監控時段，請輸入編號來選擇要刪除哪一個：*\n\n"
             for i, s in enumerate(subs, 1):
-                resp += f"{i}. ⏰ 規則：`{s['rrule']}` | 門檻：{s['threshold']}\n"
+                rule_desc = format_rrule_for_display(s['rrule'])
+                resp += f"{i}. ⏰ 規則：`{rule_desc}` | 門檻：{s['threshold']}\n"
             resp += "\n⚠️ *注意：此處只能輸入數字編號選擇。*"
             await message.answer(resp, parse_mode="Markdown")
             return
@@ -487,7 +490,7 @@ class BikeGuardBot:
                 f"已為你設定：\n"
                 f"📍 站點：`{sna}`\n"
                 f"🚲 車型：{type_label}\n"
-                f"📅 循環：`{rrule}`\n"
+                f"📅 循環：`{format_rrule_for_display(rrule)}`\n"
                 f"門檻預設為 3 輛。你可以隨時用 /list 查看。",
                 parse_mode="Markdown"
             )
