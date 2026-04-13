@@ -81,33 +81,63 @@ class MonitorEngine:
 
             
             # If triggered, notify
+            notification_sent = False
             if is_triggered:
-                sna = station_metadata.get(station_id, StationInfo(sno=station_id, sna=station_id)).sna
-                message = (
-                    f"🚨 *BikeGuard 警戒通知*\n"
-                    f"站點：{sna}\n"
-                    f"監控對象：*{type_label}*\n"
-                    f"目前車輛：*{current_count}* (低於門檻 {threshold})\n"
-                    f"(細分: 2.0: {realtime['sbi_20']} / 電輔: {realtime['sbi_20e']})\n"
-                    f"空位數：{realtime['bemp']}\n"
-                    f"更新時間：{realtime['updatetime']}\n"
-                    f"建議出發時間：立即出發！"
-                )
-                for notifier in self.notifiers:
-                    await notifier.send_notification(message, chat_id=task['user_id'])
+                # Cooldown check: 10 minutes (600 seconds)
+                should_notify = True
+                last_notify_str = task.get('last_notified_at')
+                if last_notify_str:
+                    try:
+                        last_notify = datetime.fromisoformat(last_notify_str)
+                        if (datetime.now() - last_notify).total_seconds() < 600:
+                            should_notify = False
+                    except (ValueError, TypeError):
+                        pass
 
+                if should_notify:
+                    if not self.notifiers:
+                        logging.warning(f"⚠️ Alert triggered for station {station_id} (sub {task['sub_id']}), but no notification channels (notifiers) are configured.")
+                    else:
+                        sna = station_metadata.get(station_id, StationInfo(sno=station_id, sna=station_id)).sna
+                        message = (
+                            f"🚨 *BikeGuard 警戒通知*\n"
+                            f"站點：{sna}\n"
+                            f"監控對象：*{type_label}*\n"
+                            f"目前車輛：*{current_count}* (低於門檻 {threshold})\n"
+                            f"(細分: 2.0: {realtime['sbi_20']} / 電輔: {realtime['sbi_20e']})\n"
+                            f"空位數：{realtime['bemp']}\n"
+                            f"更新時間：{realtime['updatetime']}\n"
+                            f"建議出發時間：立即出發！"
+                        )
+                        for notifier in self.notifiers:
+                            success = await notifier.send_notification(message, chat_id=task['user_id'])
+                            if success:
+                                notification_sent = True
 
             # 5. Schedule next run or DELETE if one-time
             if is_triggered and task.get('rrule', '').startswith('ONCE:'):
-                logging.info(f"One-time task {task_id} (sub {task['sub_id']}) completed. Deleting subscription.")
-                self.user_service.remove_subscription_by_id(task['sub_id'])
+                if notification_sent:
+                    logging.info(f"One-time task {task_id} (sub {task['sub_id']}) completed notification. Deleting subscription.")
+                    self.user_service.remove_subscription_by_id(task['sub_id'])
+                else:
+                    # If it's a ONCE task but we haven't successfully notified yet, 
+                    # we keep it alive but with high frequency.
+                    next_run_dt = datetime.now() + timedelta(seconds=new_interval)
+                    self.user_service.db.update_task_status(
+                        task_id, 
+                        status='pending', 
+                        next_run=next_run_dt.isoformat(), 
+                        interval=new_interval
+                    )
             else:
                 next_run_dt = datetime.now() + timedelta(seconds=new_interval)
+                last_notified = datetime.now().isoformat() if notification_sent else task.get('last_notified_at')
                 self.user_service.db.update_task_status(
                     task_id, 
                     status='pending', 
                     next_run=next_run_dt.isoformat(), 
-                    interval=new_interval
+                    interval=new_interval,
+                    last_notified_at=last_notified
                 )
 
     async def run_once(self):

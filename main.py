@@ -52,9 +52,12 @@ async def main():
     telegram_chat_id = os.getenv("TELEGRAM_CHAT_ID")
     
     notifiers = []
-    if telegram_token and telegram_chat_id:
+    if telegram_token:
+        # Note: telegram_chat_id can be None here, it will be used as a default if provided
         notifiers.append(TelegramNotifier(telegram_token, telegram_chat_id))
         logging.info("Telegram Notifier enabled.")
+    else:
+        logging.warning("TELEGRAM_BOT_TOKEN is missing. The system will run in silent monitoring mode (logs only).")
     # 5. Initialize Layers
     monitor_engine = MonitorEngine(api_client, user_service, station_service, notifiers)
     rrule_scheduler = RRuleScheduler(db_manager)

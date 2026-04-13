@@ -78,9 +78,16 @@ class DatabaseManager:
                     next_run TEXT NOT NULL,
                     current_interval INTEGER DEFAULT 60,
                     status TEXT DEFAULT 'pending',
+                    last_notified_at TEXT,
                     FOREIGN KEY (sub_id) REFERENCES user_subscriptions(id)
                 )
             ''')
+            
+            # Migration for active_tasks: check if last_notified_at exists
+            cursor.execute("PRAGMA table_info(active_tasks)")
+            task_cols = cursor.fetchall()
+            if not any(col[1] == 'last_notified_at' for col in task_cols):
+                cursor.execute("ALTER TABLE active_tasks ADD COLUMN last_notified_at TEXT")
 
             # 3. Station Metadata Cache
             cursor.execute('''
@@ -183,13 +190,19 @@ class DatabaseManager:
         finally:
             conn.close()
 
-    def update_task_status(self, task_id: int, status: str, next_run: Optional[str] = None, interval: Optional[int] = None):
+    def update_task_status(self, task_id: int, status: str, next_run: Optional[str] = None, interval: Optional[int] = None, last_notified_at: Optional[str] = None):
         conn = self._get_connection()
         try:
             cursor = conn.cursor()
             if next_run and interval:
-                cursor.execute("UPDATE active_tasks SET status = ?, next_run = ?, current_interval = ? WHERE id = ?", 
-                             (status, next_run, interval, task_id))
+                if last_notified_at:
+                    cursor.execute("UPDATE active_tasks SET status = ?, next_run = ?, current_interval = ?, last_notified_at = ? WHERE id = ?", 
+                                 (status, next_run, interval, last_notified_at, task_id))
+                else:
+                    cursor.execute("UPDATE active_tasks SET status = ?, next_run = ?, current_interval = ? WHERE id = ?", 
+                                 (status, next_run, interval, task_id))
+            elif last_notified_at:
+                cursor.execute("UPDATE active_tasks SET status = ?, last_notified_at = ? WHERE id = ?", (status, last_notified_at, task_id))
             else:
                 cursor.execute("UPDATE active_tasks SET status = ? WHERE id = ?", (status, task_id))
             conn.commit()
