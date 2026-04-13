@@ -16,15 +16,6 @@ class MonitorEngine:
         self.station_service = station_service
         self.notifiers = notifiers
 
-    def _is_in_time_window(self, start_str: str, end_str: str, days_str: str) -> bool:
-        now = datetime.now()
-        current_time = now.strftime("%H:%M")
-        current_day = str(now.isoweekday()) # 1 for Monday
-
-        if current_day not in days_str.split(","):
-            return False
-            
-        return start_str <= current_time <= end_str
 
     async def run_once(self):
         """Execute one check cycle for all active user triggers."""
@@ -120,7 +111,10 @@ class MonitorEngine:
                 )
 
     async def run_once(self):
-        """Legacy method for backward compatibility/quick tests."""
+        """
+        [LEGACY] Execute one check cycle for all active user triggers.
+        This method is kept for backward compatibility. Use run_worker_cycle instead.
+        """
         await self.run_worker_cycle()
 
     async def start_loop(self, interval: int = 60):

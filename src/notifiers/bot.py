@@ -223,6 +223,8 @@ class BikeGuardBot:
                     self._last_search_results.pop(user_id, None)
                     return
             except (ValueError, KeyError, TypeError):
+                # Silently ignore invalid input or state mismatches. 
+                # This allow the flow to fall back to a re-search or text handling safely.
                 pass
 
         # 2. If NOT a digit: Treat as a RE-SEARCH for the existing command

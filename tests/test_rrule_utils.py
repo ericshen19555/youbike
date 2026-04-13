@@ -45,7 +45,8 @@ class TestGetNextOccurrence:
         result = get_next_occurrence(rrule)
         assert result is not None
 
-    # ── is_rrule_active_now (stub that returns None) ──
-    def test_is_rrule_active_now_returns_none(self):
-        result = is_rrule_active_now("FREQ=DAILY")
-        assert result is None
+    # ── is_rrule_active_now (stub that raises NotImplementedError) ──
+    def test_is_rrule_active_now_raises_not_implemented(self):
+        import pytest
+        with pytest.raises(NotImplementedError):
+            is_rrule_active_now("FREQ=DAILY")

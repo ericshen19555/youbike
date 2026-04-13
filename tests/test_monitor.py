@@ -31,23 +31,7 @@ def _make_engine(deps, notifiers=None):
     return MonitorEngine(api_client, user_service, station_service, notifiers or [notifier])
 
 
-class TestMonitorIsInTimeWindow:
-    def test_in_window(self, monitor_deps):
-        engine = _make_engine(monitor_deps)
-        now = datetime.now()
-        day = str(now.isoweekday())
-        t = now.strftime("%H:%M")
-        assert engine._is_in_time_window(t, t, day) is True
 
-    def test_out_of_window_wrong_day(self, monitor_deps):
-        engine = _make_engine(monitor_deps)
-        assert engine._is_in_time_window("00:00", "23:59", "9") is False  # No day 9
-
-    def test_out_of_window_wrong_time(self, monitor_deps):
-        engine = _make_engine(monitor_deps)
-        now = datetime.now()
-        day = str(now.isoweekday())
-        assert engine._is_in_time_window("00:00", "00:01", day) is (now.strftime("%H:%M") <= "00:01")
 
 
 class TestRunWorkerCycle:

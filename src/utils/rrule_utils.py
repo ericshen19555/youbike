@@ -35,4 +35,7 @@ def is_rrule_active_now(rrule_str: str, current_dt: Optional[datetime] = None) -
     Actually, for BikeGuard, Layer 1 will use get_next_occurrence to schedule 
     the first Layer 2 task.
     """
-    pass
+    # TODO: Implement real-time status check if needed for a "monitoring dashboard" feature.
+    # Current architecture uses proactive scheduling (Layer 1 -> Task -> Layer 2).
+    raise NotImplementedError("is_rrule_active_now is not implemented in the current proactive scheduling model.")
+
